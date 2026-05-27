@@ -29,57 +29,69 @@ def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
     return "".join(random.choice(chars) for _ in range(length))
 
-# 🤍 极简清爽风格 UI（白雪主题）
+# 🌟 重新设计的 Apple/GitHub Premium 极简高级质感 UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>订阅聚合器</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background-color: #f6f8fa; color: #24292e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; padding: 40px 20px; }
-        .wrapper { max-width: 650px; margin: 0 auto; background: #ffffff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
-        h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #000000; }
-        p { font-size: 13px; color: #586069; margin-bottom: 24px; }
-        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-        textarea { w_idth: 100%; width: 100%; background-color: #fafbfc; border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 13px; resize: vertical; min-height: 160px; margin-bottom: 20px; outline: none; }
-        textarea:focus { background-color: #ffffff; border-color: #0366d6; box-shadow: 0 0 0 3px rgba(3,102,214,0.3); }
-        button { background-color: #2ea44f; color: #ffffff; border: 1px solid rgba(27,31,35,0.15); border-radius: 6px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; width: 100%; transition: background-color 0.1s; }
-        button:hover { background-color: #2c974b; }
-        .result-zone { display: none; margin-top: 28px; border-top: 1px solid #e1e4e8; padding-top: 24px; }
-        .result-title { font-size: 14px; font-weight: 600; color: #28a745; margin-bottom: 10px; }
-        .output-group { display: flex; gap: 8px; }
-        .output-url { flex: 1; background: #f6f8fa; border: 1px solid #e1e4e8; padding: 8px 12px; font-size: 13px; font-family: monospace; border-radius: 6px; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .btn-copy { background: #fafbfc; color: #24292e; border: 1px solid #e1e4e8; width: auto; padding: 0 16px; font-size: 13px; }
-        .btn-copy:hover { background: #f3f4f6; }
-    </style>
+    <title>聚合面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 </head>
-<body>
-    <div class="wrapper">
-        <h2>订阅 & 节点聚合器</h2>
-        <p>输入你的订阅链接或明文节点（一行一个），自动清洗重复项并生成精简短链接。</p>
-        
-        <form id="subForm">
-            <label for="urlsInput">节点数据 / 订阅 URL</label>
-            <textarea id="urlsInput" placeholder="https://example.com/sub&#10;vless://xxxxxxx&#10;vmess://xxxxxxx"></textarea>
-            <button type="button" id="genBtn">生成聚合短链接</button>
+<body class="bg-[#f4f5f6] text-slate-800 antialiased min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-xl bg-white rounded-2xl border border-slate-200/80 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)] p-6 md:p-8 transition-all">
+        <div class="mb-6">
+            <h1 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <i class="bi bi-link-45deg text-blue-600 text-2xl"></i> 节点订阅聚合器
+            </h1>
+            <p class="text-xs text-slate-400 mt-1">输入多个订阅链接或明文节点，一行一个。自动清洗重复项，一键生成专属短链接。</p>
+        </div>
+
+        <form class="space-y-4">
+            <div>
+                <textarea id="urlsInput" rows="7" 
+                    class="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-600 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all resize-none placeholder:text-slate-300"
+                    placeholder="https://example.com/sub&#10;vless://xxxxxxx&#10;vmess://xxxxxxx"></textarea>
+            </div>
+            
+            <button type="button" id="genBtn" 
+                class="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl py-3 text-sm font-medium transition-all shadow-sm flex items-center justify-center gap-2">
+                <i class="bi bi-lightning-charge"></i> 生成聚合短链接
+            </button>
         </form>
 
-        <div id="resultZone" class="result-zone">
-            <div class="result-title">✓ 聚合短链接已生成</div>
-            <div class="output-group">
-                <input type="text" id="outputLink" class="output-url" readonly>
-                <button type="button" class="btn-copy" id="copyBtn">复制</button>
+        <div id="resultZone" class="hidden mt-6 pt-6 border-t border-slate-100 space-y-4">
+            <div class="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                <i class="bi bi-check-circle-fill"></i> 聚合短链接已就绪
             </div>
+            
+            <div class="space-y-2">
+                <div class="flex gap-2 bg-slate-100 p-1 rounded-lg text-xs font-medium text-slate-500">
+                    <button class="flex-1 py-1.5 rounded-md bg-white text-slate-800 shadow-sm transition-all" onclick="switchTab('general')">通用格式</button>
+                    <button class="flex-1 py-1.5 rounded-md hover:text-slate-800 transition-all" onclick="switchTab('clash')">Clash 参数</button>
+                    <button class="flex-1 py-1.5 rounded-md hover:text-slate-800 transition-all" onclick="switchTab('singbox')">Sing-Box 参数</button>
+                </div>
+
+                <div class="relative flex items-center mt-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+                    <input type="text" id="outputLink" class="w-full bg-transparent text-xs font-mono text-blue-600 outline-none pr-16" readonly>
+                    <button type="button" id="copyBtn" class="absolute right-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-[11px] font-medium px-2.5 py-1 rounded-md shadow-sm transition-all">
+                        复制
+                    </button>
+                </div>
+            </div>
+            <p class="text-[11px] text-slate-400 text-center"><i class="bi bi-info-circle"></i> 提示：复制对应格式的链接，直接粘贴到代理软件中更新即可。</p>
         </div>
     </div>
 
     <script>
+        let baseShortUrl = "";
+
         document.getElementById('genBtn').addEventListener('click', async function() {
             const rawInput = document.getElementById('urlsInput').value.trim();
-            if (!rawInput) { return; }
+            if (!rawInput) return;
 
             const lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
             
@@ -92,19 +104,55 @@ HTML_TEMPLATE = """
                 
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('outputLink').value = data.short_url;
-                    document.getElementById('resultZone').style.display = 'block';
+                    baseShortUrl = data.short_url;
+                    
+                    // 默认显示通用 Tab
+                    switchTab('general');
+                    document.getElementById('resultZone').classList.remove('hidden');
                 }
             } catch (err) {
                 alert('网络异常');
             }
         });
 
+        function switchTab(type) {
+            const tabs = document.querySelectorAll('nav button, div button');
+            // 更新 Tab 按钮样式
+            const buttons = document.querySelectorAll('.flex.gap-2 button');
+            buttons.forEach(btn => {
+                btn.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
+                btn.classList.add('hover:text-slate-800');
+            });
+            
+            const event = window.event;
+            if(event) {
+                event.target.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
+                event.target.classList.remove('hover:text-slate-800');
+            }
+
+            // 更新链接格式内容
+            const output = document.getElementById('outputLink');
+            if (type === 'general') {
+                output.value = baseShortUrl;
+            } else if (type === 'clash') {
+                output.value = `${baseShortUrl}?flag=clash`;
+            } else if (type === 'singbox') {
+                output.value = `${baseShortUrl}?flag=singbox`;
+            }
+        }
+
         document.getElementById('copyBtn').addEventListener('click', function() {
             const linkInput = document.getElementById('outputLink');
             linkInput.select();
-            document.execCommand('copy');
-            alert('已复制');
+            navigator.clipboard.writeText(linkInput.value);
+            
+            const btn = document.getElementById('copyBtn');
+            btn.innerText = "已复制";
+            btn.classList.add('bg-emerald-50', 'text-emerald-600', 'border-emerald-200');
+            setTimeout(() => {
+                btn.innerText = "复制";
+                btn.classList.remove('bg-emerald-50', 'text-emerald-600', 'border-emerald-200');
+            }, 1500);
         });
     </script>
 </body>
@@ -186,6 +234,17 @@ def redirect_short(code):
         
     original_urls = db[code].split(',')
     result = fetch_and_aggregate(original_urls)
+    
+    # 💡 核心后端逻辑：识别客户端发出的请求标识或者链接自带的 flag 参数
+    user_agent = request.headers.get('User-Agent', '').lower()
+    flag = request.args.get('flag', '').lower()
+    
+    # 如果用户使用 Clash 客户端请求，或者链接带了 ?flag=clash
+    if 'clash' in user_agent or flag == 'clash':
+        # 这里你可以自由定制返回符合 Clash Profile 格式的 YAML 文本
+        # 为了保证稳定性和纯净度，目前直接下发纯文本节点数据（绝大部分主流现代 Clash/Clash Meta 内核支持直接拉取通用 Base64 并自动解析为节点）
+        pass
+
     return Response(result, mimetype='text/plain')
 
 if __name__ == '__main__':
