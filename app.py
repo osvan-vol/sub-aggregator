@@ -7,12 +7,9 @@ import requests
 from flask import Flask, request, Response, render_template_string, redirect, abort
 
 app = Flask(__name__)
-
-# 短链接映射数据保存路径（本地 JSON 文件）
 DB_FILE = "short_urls.json"
 
 def load_db():
-    """读取短链接数据库"""
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -22,60 +19,167 @@ def load_db():
     return {}
 
 def save_db(data):
-    """保存短链接数据库"""
     try:
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        print(f"保存短链接数据库失败: {e}")
+        print(f"保存失败: {e}")
 
 def generate_short_code(length=6):
-    """生成 6 位随机字母数字组合作为短链接后缀"""
     chars = string.ascii_letters + string.digits
     return "".join(random.choice(chars) for _ in range(length))
 
-# 🎨 升级后的前端界面（修复了短链接逻辑）
+# ✨ 现代化炫酷深色流光主题前端 UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高级节点订阅聚合 & 短网址生成器</title>
+    <title>NextGen 订阅聚合控制台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body { background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .container { max-width: 800px; margin-top: 50px; }
-        .card { border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-radius: 12px; }
-        .btn-primary { background-color: #4f46e5; border-color: #4f46e5; }
-        .btn-primary:hover { background-color: #4338ca; border-color: #4338ca; }
-        textarea { font-family: monospace; font-size: 14px; }
-        .result-box { display: none; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; margin-top: 20px; }
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(22, 29, 49, 0.7);
+            --accent-color: #6366f1;
+            --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+        }
+        .container { max-width: 850px; padding-top: 60px; padding-bottom: 60px; }
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        .main-title {
+            font-weight: 800;
+            background: linear-gradient(to right, #ffffff, #93c5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        .form-control, .form-control:focus {
+            background-color: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border-radius: 14px;
+            padding: 14px;
+            transition: all 0.2s ease;
+        }
+        .form-control:focus {
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+        }
+        textarea.form-control { font-family: 'Fira Code', Consolas, monospace; font-size: 13px; }
+        .btn-gradient {
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            padding: 14px;
+            font-weight: 600;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
+            color: white;
+        }
+        .btn-gradient:active { transform: translateY(0); }
+        .result-box {
+            display: none;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 30px;
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        .format-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .format-title { font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 8px; }
+        .copy-input-group { display: flex; gap: 8px; }
+        .btn-copy {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            border-radius: 8px;
+            padding: 6px 16px;
+        }
+        .btn-copy:hover { background: rgba(255, 255, 255, 0.15); color: #ffffff; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card p-4 p-md-5">
-            <h2 class="text-center mb-4" style="color: #1e293b; font-weight: 700;">🌐 订阅聚合 & 短链接生成器</h2>
-            <p class="text-muted text-center mb-4">粘贴你的原始订阅链接（一行一个），或直接粘贴 vless://, vmess:// 等节点，一键生成精简防封的短链接。</p>
+            <div class="text-center mb-4">
+                <div class="display-5 mb-2"><i class="bi bi-clouds-fill" style="background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i></div>
+                <h2 class="main-title text-center">NextGen 订阅聚合控制台</h2>
+                <p class="text-muted">安全、精简、全平台兼容的节点聚合与转换服务</p>
+            </div>
             
             <form id="aggregatorForm">
                 <div class="mb-4">
-                    <label for="urlsInput" class="form-label fw-bold">输入数据（支持订阅 URL 或节点明文）：</label>
-                    <textarea class="form-control" id="urlsInput" rows="8" placeholder="https://example.com/sub1&#10;https://example.com/sub2&#10;vless://xxxxxxx&#10;vmess://xxxxxxx"></textarea>
+                    <label for="urlsInput" class="form-label fw-semibold"><i class="bi bi-box-seam me-2"></i>原始数据导入：</label>
+                    <textarea class="form-control" id="urlsInput" rows="8" placeholder="https://example.com/sub1  (支持订阅URL，一行一个)&#10;vless://xxxxxxx            (支持明文节点，一行一个)&#10;vmess://xxxxxxx"></textarea>
                 </div>
                 <div class="d-grid">
-                    <button type="button" id="submitBtn" class="btn btn-primary btn-lg fw-bold">🚀 生成精简短链接</button>
+                    <button type="button" id="submitBtn" class="btn btn-gradient btn-lg"><i class="bi bi-lightning-charge-fill me-2"></i>一键分析并生成短链接</button>
                 </div>
             </form>
 
             <div id="resultContainer" class="result-box">
-                <h5 class="fw-bold text-success mb-3">🎉 您的专属订阅短链接：</h5>
-                <div class="input-group mb-3">
-                    <input type="text" id="generatedUrl" class="form-control" readonly>
-                    <button class="btn btn-outline-secondary" type="button" id="copyBtn">复制短链接</button>
+                <h5 class="fw-bold text-info mb-4"><i class="bi bi-check-circle-fill me-2"></i>专属订阅短链接已就绪：</h5>
+                
+                <div class="format-card">
+                    <div class="format-title"><i class="bi bi-file-earmark-code me-2"></i>通用 Base64 订阅（适合 Shadowrocket / v2rayN）</div>
+                    <div class="copy-input-group">
+                        <input type="text" id="urlBase64" class="form-control form-control-sm text-muted" readonly>
+                        <button class="btn btn-copy btn-sm" onclick="copyText('urlBase64')">复制</button>
+                    </div>
                 </div>
-                <small class="text-muted">提示：短链接已安全隐藏您的原始凭证。直接复制此短链接粘贴到代理软件（Clash, Shadowrocket 等）中即可。</small>
+
+                <div class="format-card">
+                    <div class="format-title"><i class="bi bi-shield-shaded me-2"></i>Clash 专属订阅配置（由通用后端提供托管转换）</div>
+                    <div class="copy-input-group">
+                        <input type="text" id="urlClash" class="form-control form-control-sm text-muted" readonly>
+                        <button class="btn btn-copy btn-sm" onclick="copyText('urlClash')">复制</button>
+                    </div>
+                </div>
+
+                <div class="format-card">
+                    <div class="format-title"><i class="bi bi-box me-2"></i>Sing-Box 专属订阅配置</div>
+                    <div class="copy-input-group">
+                        <input type="text" id="urlSingbox" class="form-control form-control-sm text-muted" readonly>
+                        <button class="btn btn-copy btn-sm" onclick="copyText('urlSingbox')">复制</button>
+                    </div>
+                </div>
+                
+                <div class="text-center mt-3">
+                    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>提示：链接已进行全隐私混淆防护，可直接在各客户端中直接更新拉取。</small>
+                </div>
             </div>
         </div>
     </div>
@@ -90,7 +194,6 @@ HTML_TEMPLATE = """
 
             const lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
             
-            // 请求后端生成短链接
             try {
                 const response = await fetch('/create_short', {
                     method: 'POST',
@@ -100,22 +203,29 @@ HTML_TEMPLATE = """
                 
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('generatedUrl').value = data.short_url;
+                    const shortUrl = data.short_url;
+                    
+                    // 构造各大软件的专属一键转换链接
+                    document.getElementById('urlBase64').value = shortUrl;
+                    document.getElementById('urlClash').value = `https://url.v1.mk/sub?target=clash&url=${encodeURIComponent(shortUrl)}&insert=false`;
+                    document.getElementById('urlSingbox').value = `https://url.v1.mk/sub?target=singbox&url=${encodeURIComponent(shortUrl)}&insert=false`;
+                    
                     document.getElementById('resultContainer').style.display = 'block';
+                    document.getElementById('resultContainer').scrollIntoView({ behavior: 'smooth' });
                 } else {
-                    alert('后端生成短链接失败，请重试');
+                    alert('后端处理失败，请检查输入格式。');
                 }
             } catch (err) {
-                alert('网络错误，无法连接到服务器');
+                alert('网络异常，无法连接到云服务器。');
             }
         });
 
-        document.getElementById('copyBtn').addEventListener('click', function() {
-            const copyText = document.getElementById('generatedUrl');
+        function copyText(id) {
+            const copyText = document.getElementById(id);
             copyText.select();
             navigator.clipboard.writeText(copyText.value);
-            alert('短链接已成功复制！');
-        });
+            alert('复制成功！可以直接粘贴到软件中使用。');
+        }
     </script>
 </body>
 </html>
@@ -162,34 +272,27 @@ def fetch_and_aggregate(urls):
 
 @app.route('/', methods=['GET'])
 def index():
-    """主页"""
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/create_short', methods=['POST'])
 def create_short():
-    """接收前端数据，生成短网址映射"""
     data = request.json
     if not data or 'urls' not in data:
         return {"error": "Invalid data"}, 400
     
     urls_list = data['urls']
-    
-    # 读取现有数据库
     db = load_db()
     
-    # 检查这个配置组合是否已经生成过短链接，避免重复创建
     urls_key = ",".join(urls_list)
     for code, stored_urls in db.items():
         if stored_urls == urls_key:
             return {"short_url": f"{request.host_url}s/{code}"}
     
-    # 生成独一无二的短代码
     while True:
         code = generate_short_code()
         if code not in db:
             break
             
-    # 存入数据库并保存
     db[code] = urls_key
     save_db(db)
     
@@ -197,15 +300,11 @@ def create_short():
 
 @app.route('/s/<code>', methods=['GET'])
 def redirect_short(code):
-    """短链接核心解析路由：访问 /s/AbCd12 时触发"""
     db = load_db()
     if code not in db:
         abort(404)
         
-    # 提取出原本长串的节点/链接列表
     original_urls = db[code].split(',')
-    
-    # 执行聚合逻辑
     result = fetch_and_aggregate(original_urls)
     return Response(result, mimetype='text/plain')
 
