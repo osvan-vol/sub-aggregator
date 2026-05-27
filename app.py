@@ -4,7 +4,7 @@ import os
 import random
 import string
 import requests
-from flask import Flask, request, Response, render_template_string, redirect, abort
+from flask import Flask, request, Response, render_template_string, abort
 
 app = Flask(__name__)
 DB_FILE = "short_urls.json"
@@ -29,168 +29,57 @@ def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
     return "".join(random.choice(chars) for _ in range(length))
 
-# ✨ 现代化炫酷深色流光主题前端 UI
+# 🤍 极简清爽风格 UI（白雪主题）
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen 订阅聚合控制台</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <title>订阅聚合器</title>
     <style>
-        :root {
-            --bg-color: #0b0f19;
-            --card-bg: rgba(22, 29, 49, 0.7);
-            --accent-color: #6366f1;
-            --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
-        }
-        body {
-            background-color: var(--bg-color);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            min-height: 100vh;
-        }
-        .container { max-width: 850px; padding-top: 60px; padding-bottom: 60px; }
-        .card {
-            background: var(--card-bg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 24px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-            transition: all 0.3s ease;
-        }
-        .main-title {
-            font-weight: 800;
-            background: linear-gradient(to right, #ffffff, #93c5fd);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.5px;
-        }
-        .form-control, .form-control:focus {
-            background-color: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #ffffff;
-            border-radius: 14px;
-            padding: 14px;
-            transition: all 0.2s ease;
-        }
-        .form-control:focus {
-            border-color: #06b6d4;
-            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
-        }
-        textarea.form-control { font-family: 'Fira Code', Consolas, monospace; font-size: 13px; }
-        .btn-gradient {
-            background: var(--accent-gradient);
-            color: white;
-            border: none;
-            border-radius: 14px;
-            padding: 14px;
-            font-weight: 600;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .btn-gradient:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
-            color: white;
-        }
-        .btn-gradient:active { transform: translateY(0); }
-        .result-box {
-            display: none;
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid rgba(6, 182, 212, 0.3);
-            border-radius: 16px;
-            padding: 24px;
-            margin-top: 30px;
-            animation: fadeIn 0.4s ease-out forwards;
-        }
-        .format-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-        .format-title { font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 8px; }
-        .copy-input-group { display: flex; gap: 8px; }
-        .btn-copy {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-main);
-            border-radius: 8px;
-            padding: 6px 16px;
-        }
-        .btn-copy:hover { background: rgba(255, 255, 255, 0.15); color: #ffffff; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #f6f8fa; color: #24292e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; padding: 40px 20px; }
+        .wrapper { max-width: 650px; margin: 0 auto; background: #ffffff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+        h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #000000; }
+        p { font-size: 13px; color: #586069; margin-bottom: 24px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+        textarea { w_idth: 100%; width: 100%; background-color: #fafbfc; border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 13px; resize: vertical; min-height: 160px; margin-bottom: 20px; outline: none; }
+        textarea:focus { background-color: #ffffff; border-color: #0366d6; box-shadow: 0 0 0 3px rgba(3,102,214,0.3); }
+        button { background-color: #2ea44f; color: #ffffff; border: 1px solid rgba(27,31,35,0.15); border-radius: 6px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; width: 100%; transition: background-color 0.1s; }
+        button:hover { background-color: #2c974b; }
+        .result-zone { display: none; margin-top: 28px; border-top: 1px solid #e1e4e8; padding-top: 24px; }
+        .result-title { font-size: 14px; font-weight: 600; color: #28a745; margin-bottom: 10px; }
+        .output-group { display: flex; gap: 8px; }
+        .output-url { flex: 1; background: #f6f8fa; border: 1px solid #e1e4e8; padding: 8px 12px; font-size: 13px; font-family: monospace; border-radius: 6px; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .btn-copy { background: #fafbfc; color: #24292e; border: 1px solid #e1e4e8; width: auto; padding: 0 16px; font-size: 13px; }
+        .btn-copy:hover { background: #f3f4f6; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card p-4 p-md-5">
-            <div class="text-center mb-4">
-                <div class="display-5 mb-2"><i class="bi bi-clouds-fill" style="background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i></div>
-                <h2 class="main-title text-center">NextGen 订阅聚合控制台</h2>
-                <p class="text-muted">安全、精简、全平台兼容的节点聚合与转换服务</p>
-            </div>
-            
-            <form id="aggregatorForm">
-                <div class="mb-4">
-                    <label for="urlsInput" class="form-label fw-semibold"><i class="bi bi-box-seam me-2"></i>原始数据导入：</label>
-                    <textarea class="form-control" id="urlsInput" rows="8" placeholder="https://example.com/sub1  (支持订阅URL，一行一个)&#10;vless://xxxxxxx            (支持明文节点，一行一个)&#10;vmess://xxxxxxx"></textarea>
-                </div>
-                <div class="d-grid">
-                    <button type="button" id="submitBtn" class="btn btn-gradient btn-lg"><i class="bi bi-lightning-charge-fill me-2"></i>一键分析并生成短链接</button>
-                </div>
-            </form>
+    <div class="wrapper">
+        <h2>订阅 & 节点聚合器</h2>
+        <p>输入你的订阅链接或明文节点（一行一个），自动清洗重复项并生成精简短链接。</p>
+        
+        <form id="subForm">
+            <label for="urlsInput">节点数据 / 订阅 URL</label>
+            <textarea id="urlsInput" placeholder="https://example.com/sub&#10;vless://xxxxxxx&#10;vmess://xxxxxxx"></textarea>
+            <button type="button" id="genBtn">生成聚合短链接</button>
+        </form>
 
-            <div id="resultContainer" class="result-box">
-                <h5 class="fw-bold text-info mb-4"><i class="bi bi-check-circle-fill me-2"></i>专属订阅短链接已就绪：</h5>
-                
-                <div class="format-card">
-                    <div class="format-title"><i class="bi bi-file-earmark-code me-2"></i>通用 Base64 订阅（适合 Shadowrocket / v2rayN）</div>
-                    <div class="copy-input-group">
-                        <input type="text" id="urlBase64" class="form-control form-control-sm text-muted" readonly>
-                        <button class="btn btn-copy btn-sm" onclick="copyText('urlBase64')">复制</button>
-                    </div>
-                </div>
-
-                <div class="format-card">
-                    <div class="format-title"><i class="bi bi-shield-shaded me-2"></i>Clash 专属订阅配置（由通用后端提供托管转换）</div>
-                    <div class="copy-input-group">
-                        <input type="text" id="urlClash" class="form-control form-control-sm text-muted" readonly>
-                        <button class="btn btn-copy btn-sm" onclick="copyText('urlClash')">复制</button>
-                    </div>
-                </div>
-
-                <div class="format-card">
-                    <div class="format-title"><i class="bi bi-box me-2"></i>Sing-Box 专属订阅配置</div>
-                    <div class="copy-input-group">
-                        <input type="text" id="urlSingbox" class="form-control form-control-sm text-muted" readonly>
-                        <button class="btn btn-copy btn-sm" onclick="copyText('urlSingbox')">复制</button>
-                    </div>
-                </div>
-                
-                <div class="text-center mt-3">
-                    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>提示：链接已进行全隐私混淆防护，可直接在各客户端中直接更新拉取。</small>
-                </div>
+        <div id="resultZone" class="result-zone">
+            <div class="result-title">✓ 聚合短链接已生成</div>
+            <div class="output-group">
+                <input type="text" id="outputLink" class="output-url" readonly>
+                <button type="button" class="btn-copy" id="copyBtn">复制</button>
             </div>
         </div>
     </div>
 
     <script>
-        document.getElementById('submitBtn').addEventListener('click', async function() {
+        document.getElementById('genBtn').addEventListener('click', async function() {
             const rawInput = document.getElementById('urlsInput').value.trim();
-            if (!rawInput) {
-                alert('请先输入订阅链接或节点信息！');
-                return;
-            }
+            if (!rawInput) { return; }
 
             const lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
             
@@ -203,29 +92,20 @@ HTML_TEMPLATE = """
                 
                 if (response.ok) {
                     const data = await response.json();
-                    const shortUrl = data.short_url;
-                    
-                    // 构造各大软件的专属一键转换链接
-                    document.getElementById('urlBase64').value = shortUrl;
-                    document.getElementById('urlClash').value = `https://url.v1.mk/sub?target=clash&url=${encodeURIComponent(shortUrl)}&insert=false`;
-                    document.getElementById('urlSingbox').value = `https://url.v1.mk/sub?target=singbox&url=${encodeURIComponent(shortUrl)}&insert=false`;
-                    
-                    document.getElementById('resultContainer').style.display = 'block';
-                    document.getElementById('resultContainer').scrollIntoView({ behavior: 'smooth' });
-                } else {
-                    alert('后端处理失败，请检查输入格式。');
+                    document.getElementById('outputLink').value = data.short_url;
+                    document.getElementById('resultZone').style.display = 'block';
                 }
             } catch (err) {
-                alert('网络异常，无法连接到云服务器。');
+                alert('网络异常');
             }
         });
 
-        function copyText(id) {
-            const copyText = document.getElementById(id);
-            copyText.select();
-            navigator.clipboard.writeText(copyText.value);
-            alert('复制成功！可以直接粘贴到软件中使用。');
-        }
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const linkInput = document.getElementById('outputLink');
+            linkInput.select();
+            document.execCommand('copy');
+            alert('已复制');
+        });
     </script>
 </body>
 </html>
