@@ -12,27 +12,32 @@ DB_FILE = "short_urls.json"
 
 def load_db():
     if os.path.exists(DB_FILE):
-        try: with open(DB_FILE, "r", encoding="utf-8") as f: return json.load(f)
-        except: return {}
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
 
 def save_db(data):
     try:
-        with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e: print(f"保存失败: {e}")
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"保存失败: {e}")
 
 def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
     return "".join(random.choice(chars) for _ in range(length))
 
-# 🌟 全新重构的高级果味极简面板（增加了多客户端格式配置展示）
+# 🌟 Premium 极简高级浅色调控制面板
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen 订阅聚合控制台</title>
+    <title>聚合面板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 </head>
@@ -128,10 +133,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# ==================== 后端协议解析模块 ====================
+# ==================== 后端协议高级解析模块 ====================
 
 def parse_node_to_dict(node_str):
-    """解析主流节点协议 (VLESS/VMESS/SS/Trojan) 为通用的 Python 字典结构"""
+    """健壮解析 VLESS/VMESS/SS/Trojan 协议，提取高级传输属性配置"""
     try:
         node_str = node_str.strip()
         if not node_str or "://" not in node_str: return None
@@ -139,23 +144,22 @@ def parse_node_to_dict(node_str):
         protocol, rest = node_str.split("://", 1)
         protocol = protocol.lower()
         
-        # 针对 VMESS 这种通常是全 Base64 JSON 的处理
+        # 1. 解构 VMESS (标准 Base64 JSON 字符串)
         if protocol == "vmess":
             try:
-                # 自动补齐 padding 并解码
                 padded = rest.split("#")[0]
                 padded += "=" * (4 - len(padded) % 4)
                 config = json.loads(base64.b64decode(padded).decode('utf-8'))
                 return {
-                    "type": "vmess", "name": config.get("ps", "Vmess_Node"),
+                    "type": "vmess", "name": config.get("ps", "VMess_Node"),
                     "server": config.get("add"), "port": int(config.get("port", 443)),
                     "uuid": config.get("id"), "aid": int(config.get("aid", 0)),
                     "net": config.get("net", "tcp"), "path": config.get("path", ""),
-                    "tls": True if config.get("tls") == "tls" else False
+                    "host": config.get("host", ""), "tls": True if config.get("tls") == "tls" else False
                 }
             except: return None
 
-        # 针对 VLESS / Trojan / SS 的标准 URL 格式解析
+        # 2. 解构 VLESS / Trojan / SS (标准 URL 协议格式)
         url_parsed = urllib.parse.urlparse(node_str)
         name = urllib.parse.unquote(url_parsed.fragment) if url_parsed.fragment else f"{protocol.upper()}_Node"
         queries = dict(urllib.parse.parse_qsl(url_parsed.query))
@@ -163,92 +167,120 @@ def parse_node_to_dict(node_str):
         server_port = url_parsed.netloc.split("@")[-1]
         server = server_port.split(":")[0]
         port = int(server_port.split(":")[1]) if ":" in server_port else 443
-        user_info = url_parsed.netloc.split("@")[0] if "@" in url_parsed.netloc else ""
+        user_info = urllib.parse.unquote(url_parsed.netloc.split("@")[0]) if "@" in url_parsed.netloc else ""
 
         return {
             "type": protocol, "name": name, "server": server, "port": port,
-            "uuid": user_info, "password": user_info, # 兼容不同叫法
-            "sni": queries.get("sni", server), "path": queries.get("path", ""),
+            "uuid": user_info, "password": user_info,
+            "sni": queries.get("sni", queries.get("peer", server)), 
+            "path": queries.get("path", ""),
             "security": queries.get("security", "none"),
             "net": queries.get("type", "tcp")
         }
     except: return None
 
-# ==================== 客户端专属格式打包模块 ====================
+# ==================== 专属订阅文件构建模块 ====================
 
 def build_clash_yaml(nodes_dict_list):
-    """动态拼装符合 Clash Meta 标准的完整 YAML 订阅"""
+    """安全拼装符合 Clash Meta 标准的高兼容度 YAML 配置"""
     proxies = []
     for n in nodes_dict_list:
-        if n["type"] == "vless":
-            proxies.append({
-                "name": n["name"], "type": "vless", "server": n["server"], "port": n["port"],
-                "uuid": n["uuid"], "cipher": "auto", "tls": True if n["security"] == "tls" else False,
-                "udp": True, "servername": n["sni"], "network": n["net"], "ws-opts": {"path": n["path"]} if n["net"] == "ws" else {}
-            })
-        elif n["type"] == "vmess":
-            proxies.append({
-                "name": n["name"], "type": "vmess", "server": n["server"], "port": n["port"],
-                "uuid": n["uuid"], "alterId": n["aid"], "cipher": "auto", "tls": n["tls"],
-                "network": n["net"], "ws-opts": {"path": n["path"]} if n["net"] == "ws" else {}
-            })
-        elif n["type"] == "ss":
-            proxies.append({
-                "name": n["name"], "type": "ss", "server": n["server"], "port": n["port"],
-                "cipher": "aes-256-gcm", "password": n["password"]
-            })
+        try:
+            if n["type"] == "vless":
+                item = {
+                    "name": n["name"], "type": "vless", "server": n["server"], "port": n["port"],
+                    "uuid": n["uuid"], "cipher": "auto", "tls": True if n["security"] == "tls" else False,
+                    "udp": True, "network": n["net"], "servername": n["sni"]
+                }
+                if n["net"] == "ws":
+                    item["ws-opts"] = {"path": n["path"], "headers": {"Host": n["sni"]}}
+                proxies.append(item)
+                
+            elif n["type"] == "vmess":
+                item = {
+                    "name": n["name"], "type": "vmess", "server": n["server"], "port": n["port"],
+                    "uuid": n["uuid"], "alterId": n["aid"], "cipher": "auto", "tls": n["tls"],
+                    "udp": True, "network": n["net"]
+                }
+                if n["net"] == "ws":
+                    item["ws-opts"] = {"path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["server"]}}
+                proxies.append(item)
+                
+            elif n["type"] == "ss":
+                proxies.append({
+                    "name": n["name"], "type": "ss", "server": n["server"], "port": n["port"],
+                    "cipher": "aes-256-gcm", "password": n["password"], "udp": True
+                })
+            elif n["type"] == "trojan":
+                proxies.append({
+                    "name": n["name"], "type": "trojan", "server": n["server"], "port": n["port"],
+                    "password": n["password"], "udp": True, "sni": n["sni"]
+                })
+        except: continue
 
-    # 完整标准的 Clash Profile 骨架
     clash_config = {
-        "port": 7890, "socks-port": 7891, "allow-自由": True, "mode": "Rule", "log-level": "info",
+        "port": 7890, "socks-port": 7891, "allow-lan": True, "mode": "rule", "log-level": "info",
         "proxies": proxies,
         "proxy-groups": [
-            {"name": "🚀 节点选择", "type": "select", "proxies": ["URL-Test"] + [p["name"] for p in proxies]},
-            {"name": "URL-Test", "type": "url-test", "proxies": [p["name"] for p in proxies], "url": "http://www.gstatic.com/generate_204", "interval": 300}
+            {"name": "🚀 节点选择", "type": "select", "proxies": ["⚡ 自动测速"] + [p["name"] for p in proxies]},
+            {"name": "⚡ 自动测速", "type": "url-test", "proxies": [p["name"] for p in proxies], "url": "http://www.gstatic.com/generate_204", "interval": 300}
         ],
         "rules": ["MATCH,🚀 节点选择"]
     }
-    
-    # 极简转换成 YAML 文本输出
     import yaml
     return yaml.dump(clash_config, allow_unicode=True, default_flow_style=False)
 
 
 def build_singbox_json(nodes_dict_list):
-    """动态拼装原生 Sing-box / Karing 的标准 JSON 配置结构"""
+    """安全拼装原生 Karing / Sing-box 的标准多出站 JSON 格式"""
     outbounds = []
+    node_tags = [n["name"] for n in nodes_dict_list]
     
-    # 先注入策略组/选择器
+    # 策略选择组
+    outbounds.append({"type": "selector", "tag": "proxy", "outbounds": ["auto-test"] + node_tags})
     outbounds.append({
-        "type": "selector", "tag": "proxy",
-        "outbounds": ["auto-test"] + [n["name"] for n in nodes_dict_list]
-    })
-    outbounds.append({
-        "type": "urltest", "tag": "auto-test",
-        "outbounds": [n["name"] for n in nodes_dict_list],
+        "type": "urltest", "tag": "auto-test", "outbounds": node_tags,
         "url": "https://www.gstatic.com/generate_204", "interval": "3m"
     })
 
-    # 注入节点实体
+    # 解析填充实体节点
     for n in nodes_dict_list:
         try:
             if n["type"] == "vless":
-                outbounds.append({
+                node_item = {
                     "type": "vless", "tag": n["name"], "server": n["server"], "port": n["port"],
-                    "uuid": n["uuid"], "flow": "", 
-                    "tls": {"enabled": True, "server_name": n["sni"], "insecure": False} if n["security"] == "tls" else {"enabled": False}
-                })
+                    "uuid": n["uuid"], "flow": ""
+                }
+                if n["security"] == "tls":
+                    node_item["tls"] = {"enabled": True, "server_name": n["sni"], "insecure": False}
+                if n["net"] == "ws":
+                    node_item["transport"] = {"type": "ws", "path": n["path"]}
+                outbounds.append(node_item)
+                
             elif n["type"] == "vmess":
-                outbounds.append({
+                node_item = {
                     "type": "vmess", "tag": n["name"], "server": n["server"], "port": n["port"],
-                    "uuid": n["uuid"], "security": "auto",
-                    "tls": {"enabled": True, "insecure": False} if n["tls"] else {"enabled": False}
+                    "uuid": n["uuid"], "security": "auto"
+                }
+                if n["tls"]:
+                    node_item["tls"] = {"enabled": True, "server_name": n["server"], "insecure": False}
+                if n["net"] == "ws":
+                    node_item["transport"] = {"type": "ws", "path": n["path"]}
+                outbounds.append(node_item)
+                
+            elif n["type"] == "shadowsocks" or n["type"] == "ss":
+                outbounds.append({
+                    "type": "shadowsocks", "tag": n["name"], "server": n["server"], "port": n["port"],
+                    "method": "aes-256-gcm", "password": n["password"]
+                })
+            elif n["type"] == "trojan":
+                outbounds.append({
+                    "type": "trojan", "tag": n["name"], "server": n["server"], "port": n["port"],
+                    "password": n["password"], "tls": {"enabled": True, "server_name": n["sni"]}
                 })
         except: continue
 
-    # 注入系统直连与拦截拦截
     outbounds.extend([{"type": "direct", "tag": "direct"}, {"type": "block", "tag": "block"}])
-
     singbox_config = {
         "route": {
             "rules": [{"geoip": "private", "outbound": "direct"}, {"domain_suffix": ["cn"], "outbound": "direct"}],
@@ -258,7 +290,7 @@ def build_singbox_json(nodes_dict_list):
     }
     return json.dumps(singbox_config, indent=2, ensure_ascii=False)
 
-# ==================== Flask核心路由 ====================
+# ==================== Flask 路由分配 ====================
 
 def decode_base64(data):
     missing_padding = len(data) % 4
@@ -267,9 +299,8 @@ def decode_base64(data):
     except: return ""
 
 def fetch_and_get_raw_nodes(urls):
-    """抓取源，清洗、去重，返回明文节点列表"""
     all_nodes = set()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
     for item in urls:
         item = item.strip()
@@ -313,36 +344,32 @@ def create_short():
 
 @app.route('/s/<code>', methods=['GET'])
 def redirect_short(code):
-    """智能下发订阅中心核心逻辑"""
     db = load_db()
     if code not in db: abort(404)
         
     original_urls = db[code].split(',')
     raw_nodes = fetch_and_get_raw_nodes(original_urls)
     
-    # 显式参数具有最高优先级，其次是 User-Agent 嗅探
     client_type = request.args.get('type', '').lower()
     ua = request.headers.get('User-Agent', '').lower()
     
-    # 先将明文节点流全部预解析为结构化字典
     parsed_nodes = [parse_node_to_dict(n) for n in raw_nodes]
     parsed_nodes = [n for n in parsed_nodes if n is not None]
 
-    # 1. 输出给 Clash 
+    # 1. 适配 Clash
     if client_type == 'clash' or 'clash' in ua:
         yaml_content = build_clash_yaml(parsed_nodes)
         return Response(yaml_content, mimetype='text/yaml', headers={"Content-Disposition": "attachment; filename=config.yaml"})
         
-    # 2. 输出给 Sing-box / Karing
+    # 2. 适配 Sing-box / Karing
     if client_type == 'singbox' or 'sing-box' in ua or 'karing' in ua:
         json_content = build_singbox_json(parsed_nodes)
         return Response(json_content, mimetype='application/json', headers={"Content-Disposition": "attachment; filename=config.json"})
 
-    # 3. 默认返回通用的明文 Base64 字符串流 (适合 v2rayN / Shadowrocket)
+    # 3. 默认返回给通用小火箭 / v2rayN (Base64)
     combined_str = "\n".join(raw_nodes)
     b64_result = base64.b64encode(combined_str.encode('utf-8')).decode('utf-8')
     return Response(b64_result, mimetype='text/plain')
 
 if __name__ == '__main__':
-    # 生产环境中如果依赖 yaml 库，请确保在 requirements.txt 中补上 pyyaml
     app.run(host='0.0.0.0', port=5000)
