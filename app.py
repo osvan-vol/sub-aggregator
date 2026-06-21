@@ -160,12 +160,14 @@ def parse_node_to_dict(node_str):
             try:
                 padded = rest.split("#")[0]
                 config = json.loads(decode_safe_base64(padded))
+                is_tls = True if str(config.get("tls")).lower() in ["tls", "true"] else False
                 return {
                     "type": "vmess", "name": config.get("ps", "VMess_Node"),
                     "server": config.get("add"), "port": int(config.get("port", 443)),
                     "uuid": config.get("id"), "aid": int(config.get("aid", 0)),
                     "net": str(config.get("net", "tcp")).lower(), "path": config.get("path", ""),
-                    "host": config.get("host", ""), "tls": True if str(config.get("tls")).lower() in ["tls", "true"] else False,
+                    "host": config.get("host", ""), "tls": is_tls,
+                    "security": "tls" if is_tls else "none",
                     "sni": config.get("sni", ""), "flow": ""
                 }
             except: return None
@@ -208,11 +210,16 @@ def parse_node_to_dict(node_str):
 
         # 兼容特异性复合型凭据
         if protocol == "tuic" and ":" in user_info:
-            res["uuid"] = user_info.split(":")[0]
-            res["password"] = user_info.split(":")[1]
-        elif protocol in ["ss", "shadowsocks"] and ":" in user_info:
-            res["method"] = user_info.split(":")[0]
-            res["password"] = user_info.split(":")[1]
+            res["uuid"], res["password"] = user_info.split(":", 1)
+        elif protocol in ["ss", "shadowsocks"]:
+            # 新式 SIP002（method:password 明文）与旧式（整段 base64）两种格式都要兼容
+            raw_userinfo = user_info
+            if ":" not in raw_userinfo:
+                decoded = decode_safe_base64(raw_userinfo)
+                if ":" in decoded:
+                    raw_userinfo = decoded
+            if ":" in raw_userinfo:
+                res["method"], res["password"] = raw_userinfo.split(":", 1)
 
         return res
     except: return None
@@ -242,7 +249,7 @@ def build_clash_yaml(nodes_dict_list):
             elif n["type"] == "vmess":
                 item = {
                     "name": n["name"], "type": "vmess", "server": n["server"], "port": n["port"],
-                    "uuid": n["uuid"], "alterId": n["aid"], "cipher": "auto", "tls": n["tls"] or (n["security"] == "tls"), "udp": True, "network": n["net"]
+                    "uuid": n["uuid"], "alterId": n["aid"], "cipher": "auto", "tls": n["tls"] or (n.get("security") == "tls"), "udp": True, "network": n["net"]
                 }
                 if n["net"] == "ws": item["ws-opts"] = {"path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["server"]}}
                 if n["net"] == "grpc": item["grpc-opts"] = {"grpc-service-name": n["path"]}
@@ -258,11 +265,21 @@ def build_clash_yaml(nodes_dict_list):
             elif n["type"] == "tuic":
                 proxies.append({
                     "name": n["name"], "type": "tuic", "server": n["server"], "port": n["port"],
-                    "uuid": n["uuid"], "password": n["password"], "alpn": [n["alpn"]] if n["alpn"] else ["h3"],
+                    "uuid": n["uuid"], "password": n["password"],
+                    "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"],
                     "clash-mode": "bbr", "udp": True
                 })
                 
-            elif n["type"] in ["ss", "shadowsocks", "trojan", "anytls"]:
+            elif n["type"] == "anytls":
+                item = {
+                    "name": n["name"], "type": "anytls", "server": n["server"], "port": n["port"],
+                    "password": n["password"], "sni": n["sni"],
+                    "client-fingerprint": n.get("fp", "chrome"), "udp": True
+                }
+                if n.get("alpn"): item["alpn"] = n["alpn"].split(",")
+                proxies.append(item)
+
+            elif n["type"] in ["ss", "shadowsocks", "trojan"]:
                 # 对其余未列出的标准 Xray 协议进行映射兜底
                 p_type = "trojan" if n["type"] == "trojan" else "ss"
                 item = {
@@ -292,17 +309,7 @@ def build_clash_yaml(nodes_dict_list):
 
 def build_singbox_json(nodes_dict_list):
     """完美原生适配 Karing / Sing-box 1.11+ 规范（泛型出站动态拼装树）"""
-    outbounds = []
-    node_tags = [n["name"] for n in nodes_dict_list]
-    
-    if not node_tags:
-        node_tags = ["DIRECT"]
-        
-    outbounds.append({"type": "selector", "tag": "proxy", "outbounds": ["auto-test"] + node_tags})
-    outbounds.append({
-        "type": "urltest", "tag": "auto-test", "outbounds": node_tags,
-        "url": "https://www.gstatic.com/generate_204", "interval": "3m"
-    })
+    node_outbounds = []
 
     for n in nodes_dict_list:
         try:
@@ -322,7 +329,7 @@ def build_singbox_json(nodes_dict_list):
                 
                 if n["net"] == "ws": node_item["transport"] = {"type": "ws", "path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["sni"]}}
                 elif n["net"] == "grpc": node_item["transport"] = {"type": "grpc", "service_name": n["path"]}
-                outbounds.append(node_item)
+                node_outbounds.append(node_item)
                 
             # 2. 动态编排 VMESS
             elif n["type"] == "vmess":
@@ -330,29 +337,37 @@ def build_singbox_json(nodes_dict_list):
                     "type": "vmess", "tag": n["name"], "server": n["server"], "port": n["port"],
                     "uuid": n["uuid"], "security": "auto", "packet_encoding": "xray"
                 }
-                if n["tls"] or (n["security"] == "tls"):
+                if n["tls"] or (n.get("security") == "tls"):
                     node_item["tls"] = {"enabled": True, "server_name": n["sni"] if n["sni"] else n["server"]}
                 if n["net"] == "ws": node_item["transport"] = {"type": "ws", "path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["server"]}}
                 elif n["net"] == "grpc": node_item["transport"] = {"type": "grpc", "service_name": n["path"]}
-                outbounds.append(node_item)
+                node_outbounds.append(node_item)
                 
             # 3. 动态编排 Hysteria2
             elif n["type"] == "hysteria2":
-                outbounds.append({
+                node_outbounds.append({
                     "type": "hysteria2", "tag": n["name"], "server": n["server"], "port": n["port"],
                     "password": n["password"], "tls": {"enabled": True, "server_name": n["sni"]}
                 })
                 
             # 4. 动态编排 TUIC
             elif n["type"] == "tuic":
-                outbounds.append({
+                node_outbounds.append({
                     "type": "tuic", "tag": n["name"], "server": n["server"], "port": n["port"],
                     "uuid": n["uuid"], "password": n["password"], "congestion_control": "bbr",
-                    "tls": {"enabled": True, "server_name": n["sni"], "alpn": [n["alpn"]] if n["alpn"] else ["h3"]}
+                    "tls": {"enabled": True, "server_name": n["sni"], "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"]}
                 })
                 
-            # 5. 其余协议标准兼容（SS, Trojan, AnyTLS等归类映射）
-            elif n["type"] in ["ss", "shadowsocks", "trojan", "anytls"]:
+            # 5. 动态编排 AnyTLS
+            elif n["type"] == "anytls":
+                node_outbounds.append({
+                    "type": "anytls", "tag": n["name"], "server": n["server"], "port": n["port"],
+                    "password": n["password"],
+                    "tls": {"enabled": True, "server_name": n["sni"]}
+                })
+
+            # 6. 其余协议标准兼容（SS, Trojan 归类映射）
+            elif n["type"] in ["ss", "shadowsocks", "trojan"]:
                 p_type = "trojan" if n["type"] == "trojan" else "shadowsocks"
                 node_item = {
                     "type": p_type, "tag": n["name"], "server": n["server"], "port": n["port"],
@@ -360,8 +375,17 @@ def build_singbox_json(nodes_dict_list):
                 }
                 if p_type == "shadowsocks": node_item["method"] = n.get("method", "aes-256-gcm")
                 else: node_item["tls"] = {"enabled": True, "server_name": n["sni"]}
-                outbounds.append(node_item)
+                node_outbounds.append(node_item)
         except: continue
+
+    # selector / urltest 只能引用真正成功生成的节点 tag，否则配置会因为悬空引用而加载失败
+    node_tags = [item["tag"] for item in node_outbounds] or ["direct"]
+    outbounds = [
+        {"type": "selector", "tag": "proxy", "outbounds": ["auto-test"] + node_tags},
+        {"type": "urltest", "tag": "auto-test", "outbounds": node_tags,
+         "url": "https://www.gstatic.com/generate_204", "interval": "3m"}
+    ]
+    outbounds.extend(node_outbounds)
 
     outbounds.extend([{"type": "direct", "tag": "direct"}, {"type": "block", "tag": "block"}])
     
@@ -389,6 +413,19 @@ def build_singbox_json(nodes_dict_list):
     return json.dumps(singbox_config, indent=2, ensure_ascii=False)
 
 # ==================== Flask 调度核心 ====================
+
+def dedupe_node_names(nodes):
+    """同一份订阅里经常出现重名节点，Clash/sing-box 都要求 name/tag 唯一，
+    重名会导致后面的节点覆盖前面的，或者代理组引用变得不确定。这里给重复的名字加序号后缀。"""
+    seen = {}
+    for n in nodes:
+        base_name = n["name"]
+        if base_name not in seen:
+            seen[base_name] = 1
+        else:
+            seen[base_name] += 1
+            n["name"] = f"{base_name} #{seen[base_name]}"
+    return nodes
 
 def fetch_and_get_raw_nodes(urls):
     all_nodes = set()
@@ -449,6 +486,7 @@ def redirect_short(code):
     for n in raw_nodes:
         p = parse_node_to_dict(n)
         if p: parsed_nodes.append(p)
+    parsed_nodes = dedupe_node_names(parsed_nodes)
 
     if client_type == 'clash' or 'clash' in ua:
         yaml_content = build_clash_yaml(parsed_nodes)
