@@ -168,7 +168,8 @@ def parse_node_to_dict(node_str):
                     "net": str(config.get("net", "tcp")).lower(), "path": config.get("path", ""),
                     "host": config.get("host", ""), "tls": is_tls,
                     "security": "tls" if is_tls else "none",
-                    "sni": config.get("sni", ""), "flow": ""
+                    "sni": config.get("sni", ""), "flow": "",
+                    "skip_cert": True if str(config.get("verify_cert")).lower() == "false" else False
                 }
             except: return None
 
@@ -208,11 +209,17 @@ def parse_node_to_dict(node_str):
             "alpn": queries.get("alpn", "")
         }
 
+        # 🌟 核心修复：精准捕获原链接中的 insecure=1 或 allowInsecure 等参数，没写则默认为自签安全节点兜底强开跳过
+        is_insecure = queries.get("insecure", queries.get("allowInsecure", ""))
+        if is_insecure in ["1", "true", "True"] or res["security"] == "insecure" or protocol in ["hysteria2", "anytls"]:
+            res["skip_cert"] = True
+        else:
+            res["skip_cert"] = False
+
         # 兼容特异性复合型凭据
         if protocol == "tuic" and ":" in user_info:
             res["uuid"], res["password"] = user_info.split(":", 1)
         elif protocol in ["ss", "shadowsocks"]:
-            # 新式 SIP002（method:password 明文）与旧式（整段 base64）两种格式都要兼容
             raw_userinfo = user_info
             if ":" not in raw_userinfo:
                 decoded = decode_safe_base64(raw_userinfo)
@@ -241,6 +248,7 @@ def build_clash_yaml(nodes_dict_list):
                     item["reality-opts"] = {"public-key": n["pbk"], "short-id": n["sid"]}
                 elif n["security"] == "tls":
                     item["tls"] = True
+                if n["skip_cert"]: item["skip-cert-verify"] = True
                 if n["flow"]: item["flow"] = n["flow"]
                 if n["net"] == "ws": item["ws-opts"] = {"path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["sni"]}}
                 if n["net"] == "grpc": item["grpc-opts"] = {"grpc-service-name": n["path"]}
@@ -251,6 +259,7 @@ def build_clash_yaml(nodes_dict_list):
                     "name": n["name"], "type": "vmess", "server": n["server"], "port": n["port"],
                     "uuid": n["uuid"], "alterId": n["aid"], "cipher": "auto", "tls": n["tls"] or (n.get("security") == "tls"), "udp": True, "network": n["net"]
                 }
+                if n["skip_cert"]: item["skip-cert-verify"] = True
                 if n["net"] == "ws": item["ws-opts"] = {"path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["server"]}}
                 if n["net"] == "grpc": item["grpc-opts"] = {"grpc-service-name": n["path"]}
                 if n["sni"]: item["servername"] = n["sni"]
@@ -260,8 +269,9 @@ def build_clash_yaml(nodes_dict_list):
                 proxies.append({
                     "name": n["name"], "type": "hysteria2", "server": n["server"], "port": n["port"],
                     "password": n["password"], 
-                    "ssl-verify": False,  # ✅ 修复：关闭证书严格验证，防止自签/伪造 SNI 域名报错
-                    "sni": n["sni"]
+                    "skip-cert-verify": n.get("skip_cert", True),  # ✅ 核心修复：Clash 内核标准格式
+                    "sni": n["sni"],
+                    "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"]
                 })
                 
             elif n["type"] == "tuic":
@@ -269,7 +279,8 @@ def build_clash_yaml(nodes_dict_list):
                     "name": n["name"], "type": "tuic", "server": n["server"], "port": n["port"],
                     "uuid": n["uuid"], "password": n["password"],
                     "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"],
-                    "clash-mode": "bbr", "udp": True
+                    "clash-mode": "bbr", "udp": True,
+                    "skip-cert-verify": n.get("skip_cert", True)
                 })
                 
             elif n["type"] == "anytls":
@@ -277,20 +288,21 @@ def build_clash_yaml(nodes_dict_list):
                     "name": n["name"], "type": "anytls", "server": n["server"], "port": n["port"],
                     "password": n["password"], "sni": n["sni"],
                     "client-fingerprint": n.get("fp", "chrome"), "udp": True,
-                    "ssl-verify": False  # ✅ 修复：同步关闭证书验证
+                    "skip-cert-verify": n.get("skip_cert", True)  # ✅ 核心修复：Clash 内核标准格式
                 }
                 if n.get("alpn"): item["alpn"] = n["alpn"].split(",")
                 proxies.append(item)
 
             elif n["type"] in ["ss", "shadowsocks", "trojan"]:
-                # 对其余未列出的标准 Xray 协议进行映射兜底
                 p_type = "trojan" if n["type"] == "trojan" else "ss"
                 item = {
                     "name": n["name"], "type": p_type, "server": n["server"], "port": n["port"],
                     "password": n["password"], "udp": True
                 }
                 if p_type == "ss": item["cipher"] = n.get("method", "aes-256-gcm")
-                else: item["sni"] = n["sni"]
+                else: 
+                    item["sni"] = n["sni"]
+                    if n["skip_cert"]: item["skip-cert-verify"] = True
                 proxies.append(item)
         except: continue
 
@@ -311,7 +323,7 @@ def build_clash_yaml(nodes_dict_list):
 
 
 def build_singbox_json(nodes_dict_list):
-    """完美原生适配 Karing / Sing-box 1.11+ 规范（泛型出站动态拼装树）"""
+    """完美原生适配 Karing / Sing-box 1.11+ 规范"""
     node_outbounds = []
 
     for n in nodes_dict_list:
@@ -328,7 +340,7 @@ def build_singbox_json(nodes_dict_list):
                         "utls": {"enabled": True, "fingerprint": n["fp"]}
                     }
                 elif n["security"] == "tls":
-                    node_item["tls"] = {"enabled": True, "server_name": n["sni"]}
+                    node_item["tls"] = {"enabled": True, "server_name": n["sni"], "insecure": n["skip_cert"]}
                 
                 if n["net"] == "ws": node_item["transport"] = {"type": "ws", "path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["sni"]}}
                 elif n["net"] == "grpc": node_item["transport"] = {"type": "grpc", "service_name": n["path"]}
@@ -341,7 +353,7 @@ def build_singbox_json(nodes_dict_list):
                     "uuid": n["uuid"], "security": "auto", "packet_encoding": "xray"
                 }
                 if n["tls"] or (n.get("security") == "tls"):
-                    node_item["tls"] = {"enabled": True, "server_name": n["sni"] if n["sni"] else n["server"]}
+                    node_item["tls"] = {"enabled": True, "server_name": n["sni"] if n["sni"] else n["server"], "insecure": n["skip_cert"]}
                 if n["net"] == "ws": node_item["transport"] = {"type": "ws", "path": n["path"], "headers": {"Host": n["host"] if n["host"] else n["server"]}}
                 elif n["net"] == "grpc": node_item["transport"] = {"type": "grpc", "service_name": n["path"]}
                 node_outbounds.append(node_item)
@@ -354,7 +366,7 @@ def build_singbox_json(nodes_dict_list):
                     "tls": {
                         "enabled": True, 
                         "server_name": n["sni"],
-                        "insecure": True  # ✅ 修复：开启跳过证书验证，使自签证书和特殊 SNI 生效
+                        "insecure": n.get("skip_cert", True)  # ✅ 核心修复：Singbox 标准格式
                     }
                 })
                 
@@ -363,7 +375,7 @@ def build_singbox_json(nodes_dict_list):
                 node_outbounds.append({
                     "type": "tuic", "tag": n["name"], "server": n["server"], "port": n["port"],
                     "uuid": n["uuid"], "password": n["password"], "congestion_control": "bbr",
-                    "tls": {"enabled": True, "server_name": n["sni"], "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"]}
+                    "tls": {"enabled": True, "server_name": n["sni"], "alpn": n["alpn"].split(",") if n["alpn"] else ["h3"], "insecure": n.get("skip_cert", True)}
                 })
                 
             # 5. 动态编排 AnyTLS
@@ -374,11 +386,11 @@ def build_singbox_json(nodes_dict_list):
                     "tls": {
                         "enabled": True, 
                         "server_name": n["sni"],
-                        "insecure": True  # ✅ 修复：同步开启跳过证书验证
+                        "insecure": n.get("skip_cert", True)  # ✅ 核心修复：Singbox 标准格式
                     }
                 })
 
-            # 6. 其余协议标准兼容（SS, Trojan 归类映射）
+            # 6. 其余协议标准兼容
             elif n["type"] in ["ss", "shadowsocks", "trojan"]:
                 p_type = "trojan" if n["type"] == "trojan" else "shadowsocks"
                 node_item = {
@@ -386,11 +398,10 @@ def build_singbox_json(nodes_dict_list):
                     "password": n["password"]
                 }
                 if p_type == "shadowsocks": node_item["method"] = n.get("method", "aes-256-gcm")
-                else: node_item["tls"] = {"enabled": True, "server_name": n["sni"]}
+                else: node_item["tls"] = {"enabled": True, "server_name": n["sni"], "insecure": n["skip_cert"]}
                 node_outbounds.append(node_item)
         except: continue
 
-    # selector / urltest 只能引用真正成功生成的节点 tag，否则配置会因为悬空引用而加载失败
     node_tags = [item["tag"] for item in node_outbounds] or ["direct"]
     outbounds = [
         {"type": "selector", "tag": "proxy", "outbounds": ["auto-test"] + node_tags},
@@ -398,7 +409,6 @@ def build_singbox_json(nodes_dict_list):
          "url": "https://www.gstatic.com/generate_204", "interval": "3m"}
     ]
     outbounds.extend(node_outbounds)
-
     outbounds.extend([{"type": "direct", "tag": "direct"}, {"type": "block", "tag": "block"}])
     
     singbox_config = {
@@ -427,8 +437,6 @@ def build_singbox_json(nodes_dict_list):
 # ==================== Flask 调度核心 ====================
 
 def dedupe_node_names(nodes):
-    """同一份订阅里经常出现重名节点，Clash/sing-box 都要求 name/tag 唯一，
-    重名会导致后面的节点覆盖前面的，或者代理组引用变得不确定。这里给重复的名字加序号后缀。"""
     seen = {}
     for n in nodes:
         base_name = n["name"]
