@@ -259,7 +259,9 @@ def build_clash_yaml(nodes_dict_list):
             elif n["type"] == "hysteria2":
                 proxies.append({
                     "name": n["name"], "type": "hysteria2", "server": n["server"], "port": n["port"],
-                    "password": n["password"], "ssl-verify": True, "sni": n["sni"]
+                    "password": n["password"], 
+                    "ssl-verify": False,  # ✅ 修复：关闭证书严格验证，防止自签/伪造 SNI 域名报错
+                    "sni": n["sni"]
                 })
                 
             elif n["type"] == "tuic":
@@ -274,7 +276,8 @@ def build_clash_yaml(nodes_dict_list):
                 item = {
                     "name": n["name"], "type": "anytls", "server": n["server"], "port": n["port"],
                     "password": n["password"], "sni": n["sni"],
-                    "client-fingerprint": n.get("fp", "chrome"), "udp": True
+                    "client-fingerprint": n.get("fp", "chrome"), "udp": True,
+                    "ssl-verify": False  # ✅ 修复：同步关闭证书验证
                 }
                 if n.get("alpn"): item["alpn"] = n["alpn"].split(",")
                 proxies.append(item)
@@ -347,7 +350,12 @@ def build_singbox_json(nodes_dict_list):
             elif n["type"] == "hysteria2":
                 node_outbounds.append({
                     "type": "hysteria2", "tag": n["name"], "server": n["server"], "port": n["port"],
-                    "password": n["password"], "tls": {"enabled": True, "server_name": n["sni"]}
+                    "password": n["password"], 
+                    "tls": {
+                        "enabled": True, 
+                        "server_name": n["sni"],
+                        "insecure": True  # ✅ 修复：开启跳过证书验证，使自签证书和特殊 SNI 生效
+                    }
                 })
                 
             # 4. 动态编排 TUIC
@@ -363,7 +371,11 @@ def build_singbox_json(nodes_dict_list):
                 node_outbounds.append({
                     "type": "anytls", "tag": n["name"], "server": n["server"], "port": n["port"],
                     "password": n["password"],
-                    "tls": {"enabled": True, "server_name": n["sni"]}
+                    "tls": {
+                        "enabled": True, 
+                        "server_name": n["sni"],
+                        "insecure": True  # ✅ 修复：同步开启跳过证书验证
+                    }
                 })
 
             # 6. 其余协议标准兼容（SS, Trojan 归类映射）
