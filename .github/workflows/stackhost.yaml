@@ -1,6 +1,0 @@
-name: sub-aggregator
-runtime: python
-
-build: pip install -r requirements.txt
-start: gunicorn --workers 2 --bind 0.0.0.0:5000 app:app
-port: 5000
