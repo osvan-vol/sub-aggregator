@@ -96,7 +96,11 @@ HTML_TEMPLATE = """
         document.getElementById('genBtn').addEventListener('click', async function() {
             const rawInput = document.getElementById('urlsInput').value.trim();
             if (!rawInput) return;
-            const lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
+            let lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
+            const hasLink = lines.some(l => l.includes('://'));
+            if (!hasLink) {
+                lines = [rawInput.trim()];
+            }
             
             try {
                 const response = await fetch('/create_short', {
@@ -110,6 +114,9 @@ HTML_TEMPLATE = """
                     baseShortUrl = data.short_url;
                     switchTab('v2ray');
                     document.getElementById('resultZone').classList.remove('hidden');
+                } else {
+                    const err = await response.json().catch(() => ({}));
+                    alert(err.error || ('生成失败: HTTP ' + response.status));
                 }
             } catch (err) { alert('网络异常'); }
         });
@@ -142,13 +149,17 @@ HTML_TEMPLATE = """
 # ==================== 后端万能协议解构内核 ====================
 
 def decode_safe_base64(data):
-    data = data.strip().replace('-', '+').replace('_', '/')
+    if not data:
+        return ""
+    # 去掉空白/换行，兼容多行 base64 订阅
+    data = "".join(str(data).split())
+    data = data.replace('-', '+').replace('_', '/')
     missing_padding = len(data) % 4
     if missing_padding:
         data += '=' * (4 - missing_padding)
     try:
         return base64.b64decode(data).decode('utf-8', errors='ignore')
-    except:
+    except Exception:
         return ""
 
 def parse_node_to_dict(node_str):
@@ -452,99 +463,180 @@ def dedupe_node_names(nodes):
             n["name"] = f"{base_name} #{seen[base_name]}"
     return nodes
 
+def normalize_input_items(items):
+    """整理前端提交的内容：多行 base64 合并，节点/URL 保持原样"""
+    if not items:
+        return []
+    items = [str(x).strip() for x in items if str(x).strip()]
+    if not items:
+        return []
+
+    # 已是 URL 或节点链接，直接返回
+    if any(i.startswith(('http://', 'https://')) or '://' in i for i in items):
+        # 若混有非链接行，把非链接行拼成一段再尝试
+        links = []
+        blobs = []
+        for i in items:
+            if i.startswith(('http://', 'https://')) or '://' in i:
+                links.append(i)
+            else:
+                blobs.append(i)
+        if blobs:
+            links.append(''.join(blobs))
+        return links
+
+    # 全部不像链接：当作一整段 base64 / 文本订阅
+    return [''.join(items)]
+
+
 def fetch_and_get_raw_nodes(urls):
-    all_nodes = set()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    all_nodes = []
+    seen = set()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+
+    def add_node(line):
+        line = line.strip()
+        if line and '://' in line and line not in seen:
+            seen.add(line)
+            all_nodes.append(line)
 
     def extract_nodes_from_text(text):
-        """从文本中提取节点，自动尝试 base64 解码"""
-        text = text.strip()
+        text = (text or '').strip()
         if not text:
             return
-        # 先尝试 base64 解码
+        # 先按原文逐行提取
+        for line in text.splitlines():
+            add_node(line)
+        # 再尝试 base64 解码（支持多行 base64）
         decoded = decode_safe_base64(text)
-        content = decoded if decoded and ('://' in decoded or chr(10) in decoded) else text
-        for line in content.splitlines():
-            line = line.strip()
-            if line and '://' in line:
-                all_nodes.add(line)
+        if decoded and decoded != text:
+            for line in decoded.splitlines():
+                add_node(line)
 
-    for item in urls:
+    for item in normalize_input_items(urls):
         item = item.strip()
         if not item:
             continue
-
-        # 1. 普通订阅链接
         if item.startswith('http://') or item.startswith('https://'):
             try:
-                response = requests.get(item, headers=headers, timeout=12)
+                response = requests.get(item, headers=headers, timeout=15)
                 if response.status_code == 200:
                     extract_nodes_from_text(response.text)
             except Exception:
                 continue
-
-        # 2. 单节点链接（vless:// vmess:// 等）
         elif '://' in item:
-            all_nodes.add(item)
-
-        # 3. 直接粘贴的 base64 订阅内容
+            add_node(item)
         else:
             extract_nodes_from_text(item)
 
-    return list(all_nodes)
+    return all_nodes
+
+
+def load_source_list(stored):
+    """兼容旧版逗号拼接与新版 JSON 数组存储"""
+    if stored is None:
+        return []
+    if isinstance(stored, list):
+        return stored
+    if not isinstance(stored, str):
+        return []
+    s = stored.strip()
+    if not s:
+        return []
+    if s.startswith('['):
+        try:
+            data = json.loads(s)
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    # 旧数据：逗号拼接（仅用于 http 链接列表，base64 勿走此路径）
+    return [x for x in s.split(',') if x.strip()]
+
 
 @app.route('/', methods=['GET'])
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+
 @app.route('/create_short', methods=['POST'])
 def create_short():
     data = request.json
-    if not data or 'urls' not in data: return {"error": "Invalid data"}, 400
+    if not data or 'urls' not in data:
+        return {"error": "Invalid data"}, 400
+
+    items = normalize_input_items(data.get('urls') or [])
+    if not items:
+        return {"error": "empty input"}, 400
+
+    # 先解析一次，避免生成空订阅短链
+    preview_nodes = fetch_and_get_raw_nodes(items)
+    if not preview_nodes:
+        return {"error": "未能解析出任何节点，请检查 base64/订阅内容"}, 400
+
     db = load_db()
-    urls_key = ",".join(data['urls'])
-    
-    for code, stored_urls in db.items():
-        if stored_urls == urls_key:
-            return {"short_url": f"{public_base_url()}s/{code}"}
-    
+    urls_key = json.dumps(items, ensure_ascii=False)
+
+    for code, stored in db.items():
+        if stored == urls_key or load_source_list(stored) == items:
+            return {"short_url": f"{public_base_url()}s/{code}", "nodes": len(preview_nodes)}
+
     while True:
         code = generate_short_code()
-        if code not in db: break
-            
+        if code not in db:
+            break
+
     db[code] = urls_key
     save_db(db)
-    return {"short_url": f"{public_base_url()}s/{code}"}
+    return {"short_url": f"{public_base_url()}s/{code}", "nodes": len(preview_nodes)}
+
 
 @app.route('/s/<code>', methods=['GET'])
 def redirect_short(code):
     db = load_db()
-    if code not in db: abort(404)
-        
-    original_urls = db[code].split(',')
+    if code not in db:
+        abort(404)
+
+    original_urls = load_source_list(db[code])
     raw_nodes = fetch_and_get_raw_nodes(original_urls)
-    
+
+    if not raw_nodes:
+        return Response("no valid nodes", status=400, mimetype='text/plain')
+
     client_type = request.args.get('type', '').lower()
     ua = request.headers.get('User-Agent', '').lower()
-    
+
     parsed_nodes = []
     for n in raw_nodes:
         p = parse_node_to_dict(n)
-        if p: parsed_nodes.append(p)
+        if p:
+            parsed_nodes.append(p)
     parsed_nodes = dedupe_node_names(parsed_nodes)
 
     if client_type == 'clash' or 'clash' in ua:
         yaml_content = build_clash_yaml(parsed_nodes)
-        return Response(yaml_content, mimetype='text/yaml', headers={"Content-Disposition": "attachment; filename=config.yaml"})
-        
+        return Response(
+            yaml_content,
+            mimetype='text/yaml; charset=utf-8',
+            headers={"Content-Disposition": "attachment; filename=config.yaml"},
+        )
+
     if client_type == 'singbox' or 'sing-box' in ua or 'karing' in ua:
         json_content = build_singbox_json(parsed_nodes)
-        return Response(json_content, mimetype='application/json', headers={"Content-Disposition": "attachment; filename=config.json"})
+        return Response(
+            json_content,
+            mimetype='application/json; charset=utf-8',
+            headers={"Content-Disposition": "attachment; filename=config.json"},
+        )
 
+    # v2rayN / 小火箭：标准 base64 订阅
     combined_str = "\n".join(raw_nodes)
     b64_result = base64.b64encode(combined_str.encode('utf-8')).decode('utf-8')
-    return Response(b64_result, mimetype='text/plain')
-    
+    return Response(b64_result, mimetype='text/plain; charset=utf-8')
+
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
     print(f"[sub-aggregator] listening on 0.0.0.0:{port}", flush=True)
