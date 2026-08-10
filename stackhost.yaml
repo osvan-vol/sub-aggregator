@@ -9,7 +9,7 @@ commands:
     - "pip install --no-cache-dir --user -r requirements.txt"
   start: "bash start.sh"
 
-port: 5000
+port: 8080
 
 repository:
   branch: main
