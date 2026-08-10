@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import random
+import re
 import string
 import urllib.parse
 import requests
@@ -43,7 +44,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen 全协议订阅转换面板</title>
+    <title>NextGen GAGE全协议聚合</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 </head>
@@ -99,7 +100,12 @@ HTML_TEMPLATE = """
             let lines = rawInput.split('\\n').map(line => line.trim()).filter(line => line !== "");
             const hasLink = lines.some(l => l.includes('://'));
             if (!hasLink) {
-                lines = [rawInput.trim()];
+                const longLines = lines.filter(l => l.length > 80);
+                if (longLines.length > 1 && longLines.length === lines.length) {
+                    lines = longLines;
+                } else {
+                    lines = [rawInput.trim()];
+                }
             }
             
             try {
@@ -151,7 +157,6 @@ HTML_TEMPLATE = """
 def decode_safe_base64(data):
     if not data:
         return ""
-    # 去掉空白/换行，兼容多行 base64 订阅
     data = "".join(str(data).split())
     data = data.replace('-', '+').replace('_', '/')
     missing_padding = len(data) % 4
@@ -161,6 +166,7 @@ def decode_safe_base64(data):
         return base64.b64decode(data).decode('utf-8', errors='ignore')
     except Exception:
         return ""
+
 
 def parse_node_to_dict(node_str):
     """地毯式泛型动态提取器：提取任意节点的协议、传输层参数与安全控制流"""
@@ -463,30 +469,45 @@ def dedupe_node_names(nodes):
             n["name"] = f"{base_name} #{seen[base_name]}"
     return nodes
 
+
 def normalize_input_items(items):
-    """整理前端提交的内容：多行 base64 合并，节点/URL 保持原样"""
+    """整理前端提交的内容。
+    - URL / 节点链接：原样保留
+    - 多段完整 base64（每行很长）：分别解码，不要拼在一起
+    - 一段 base64 被折成多行：合并后再解码
+    """
     if not items:
         return []
     items = [str(x).strip() for x in items if str(x).strip()]
     if not items:
         return []
 
-    # 已是 URL 或节点链接，直接返回
-    if any(i.startswith(('http://', 'https://')) or '://' in i for i in items):
-        # 若混有非链接行，把非链接行拼成一段再尝试
-        links = []
-        blobs = []
-        for i in items:
-            if i.startswith(('http://', 'https://')) or '://' in i:
-                links.append(i)
-            else:
-                blobs.append(i)
-        if blobs:
-            links.append(''.join(blobs))
-        return links
+    def is_b64_line(s):
+        s2 = "".join(s.split())
+        if len(s2) < 20:
+            return False
+        return re.match(r'^[A-Za-z0-9+/_=-]+$', s2) is not None
 
-    # 全部不像链接：当作一整段 base64 / 文本订阅
-    return [''.join(items)]
+    links = []
+    others = []
+    for i in items:
+        if i.startswith(('http://', 'https://')) or '://' in i:
+            links.append(i)
+        else:
+            others.append(i)
+
+    result = list(links)
+    if not others:
+        return result
+
+    # 多段完整 base64：每段单独处理（一次粘贴多个订阅 base64）
+    if len(others) > 1 and all(is_b64_line(x) and len("".join(x.split())) > 80 for x in others):
+        result.extend(others)
+        return result
+
+    # 一段被折行的 base64 / 文本
+    result.append("\n".join(others))
+    return result
 
 
 def fetch_and_get_raw_nodes(urls):
@@ -506,10 +527,8 @@ def fetch_and_get_raw_nodes(urls):
         text = (text or '').strip()
         if not text:
             return
-        # 先按原文逐行提取
         for line in text.splitlines():
             add_node(line)
-        # 再尝试 base64 解码（支持多行 base64）
         decoded = decode_safe_base64(text)
         if decoded and decoded != text:
             for line in decoded.splitlines():
@@ -552,7 +571,6 @@ def load_source_list(stored):
                 return data
         except Exception:
             pass
-    # 旧数据：逗号拼接（仅用于 http 链接列表，base64 勿走此路径）
     return [x for x in s.split(',') if x.strip()]
 
 
@@ -571,7 +589,6 @@ def create_short():
     if not items:
         return {"error": "empty input"}, 400
 
-    # 先解析一次，避免生成空订阅短链
     preview_nodes = fetch_and_get_raw_nodes(items)
     if not preview_nodes:
         return {"error": "未能解析出任何节点，请检查 base64/订阅内容"}, 400
@@ -631,7 +648,6 @@ def redirect_short(code):
             headers={"Content-Disposition": "attachment; filename=config.json"},
         )
 
-    # v2rayN / 小火箭：标准 base64 订阅
     combined_str = "\n".join(raw_nodes)
     b64_result = base64.b64encode(combined_str.encode('utf-8')).decode('utf-8')
     return Response(b64_result, mimetype='text/plain; charset=utf-8')
