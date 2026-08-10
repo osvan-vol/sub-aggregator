@@ -1,6 +1,12 @@
+# stackhost.yaml
 name: sub-aggregator
-runtime: python
 
-build: pip install -r requirements.txt
-start: gunicorn --workers 2 --bind 0.0.0.0:5000 app:app
+runtime:
+  image: python:3.10-slim
+
+commands:
+  build:
+    - "pip install --no-cache-dir -r requirements.txt"
+  start: "gunicorn --workers 2 --bind 0.0.0.0:5000 app:app"
+
 port: 5000
