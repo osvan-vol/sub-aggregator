@@ -1,12 +1,16 @@
-# stackhost.yaml
 name: sub-aggregator
 
 runtime:
-  image: python:3.10-slim
+  image: python:3.11-slim
 
 commands:
+  package: ""
   build:
     - "pip install --no-cache-dir -r requirements.txt"
   start: "python app.py"
 
 port: 5000
+
+repository:
+  branch: main
+  auto_deploy: true
