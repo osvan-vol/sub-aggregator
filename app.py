@@ -11,6 +11,11 @@ from flask import Flask, request, Response, render_template_string, abort
 app = Flask(__name__)
 DB_FILE = "short_urls.json"
 
+def public_base_url():
+    """反代后强制使用 https，避免生成 http 短链"""
+    host = request.headers.get("X-Forwarded-Host") or request.host
+    return f"https://{host}/"
+
 def load_db():
     if os.path.exists(DB_FILE):
         try:
@@ -458,7 +463,7 @@ def fetch_and_get_raw_nodes(urls):
             return
         # 先尝试 base64 解码
         decoded = decode_safe_base64(text)
-        content = decoded if decoded and ('://' in decoded or '\n' in decoded) else text
+        content = decoded if decoded and ('://' in decoded or chr(10) in decoded) else text
         for line in content.splitlines():
             line = line.strip()
             if line and '://' in line:
@@ -501,7 +506,7 @@ def create_short():
     
     for code, stored_urls in db.items():
         if stored_urls == urls_key:
-            return {"short_url": f"{request.host_url}s/{code}"}
+            return {"short_url": f"{public_base_url()}s/{code}"}
     
     while True:
         code = generate_short_code()
@@ -509,7 +514,7 @@ def create_short():
             
     db[code] = urls_key
     save_db(db)
-    return {"short_url": f"{request.host_url}s/{code}"}
+    return {"short_url": f"{public_base_url()}s/{code}"}
 
 @app.route('/s/<code>', methods=['GET'])
 def redirect_short(code):
@@ -541,6 +546,6 @@ def redirect_short(code):
     return Response(b64_result, mimetype='text/plain')
     
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 8080))
     print(f"[sub-aggregator] listening on 0.0.0.0:{port}", flush=True)
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
