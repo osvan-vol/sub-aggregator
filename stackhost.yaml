@@ -7,7 +7,7 @@ commands:
   package: ""
   build:
     - "pip install --no-cache-dir --user -r requirements.txt"
-  start: "python -u app.py"
+  start: "bash start.sh"
 
 port: 5000
 
