@@ -539,10 +539,8 @@ def redirect_short(code):
     combined_str = "\n".join(raw_nodes)
     b64_result = base64.b64encode(combined_str.encode('utf-8')).decode('utf-8')
     return Response(b64_result, mimetype='text/plain')
-
+    
 if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.INFO)
     port = int(os.environ.get("PORT", 5000))
-    print(f"Starting sub-aggregator on 0.0.0.0:{port}", flush=True)
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"[sub-aggregator] listening on 0.0.0.0:{port}", flush=True)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
