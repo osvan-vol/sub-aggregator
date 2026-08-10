@@ -451,21 +451,41 @@ def fetch_and_get_raw_nodes(urls):
     all_nodes = set()
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
+    def extract_nodes_from_text(text):
+        """从文本中提取节点，自动尝试 base64 解码"""
+        text = text.strip()
+        if not text:
+            return
+        # 先尝试 base64 解码
+        decoded = decode_safe_base64(text)
+        content = decoded if decoded and ('://' in decoded or '\n' in decoded) else text
+        for line in content.splitlines():
+            line = line.strip()
+            if line and '://' in line:
+                all_nodes.add(line)
+
     for item in urls:
         item = item.strip()
-        if not item: continue
+        if not item:
+            continue
+
+        # 1. 普通订阅链接
         if item.startswith('http://') or item.startswith('https://'):
             try:
-                response = requests.get(item, headers=headers, timeout=10)
+                response = requests.get(item, headers=headers, timeout=12)
                 if response.status_code == 200:
-                    raw_content = response.text.strip()
-                    decoded_content = decode_safe_base64(raw_content)
-                    nodes = decoded_content.splitlines() if decoded_content else raw_content.splitlines()
-                    for n in nodes:
-                        if '://' in n: all_nodes.add(n.strip())
-            except: continue
+                    extract_nodes_from_text(response.text)
+            except Exception:
+                continue
+
+        # 2. 单节点链接（vless:// vmess:// 等）
         elif '://' in item:
             all_nodes.add(item)
+
+        # 3. 直接粘贴的 base64 订阅内容
+        else:
+            extract_nodes_from_text(item)
+
     return list(all_nodes)
 
 @app.route('/', methods=['GET'])
@@ -521,4 +541,5 @@ def redirect_short(code):
     return Response(b64_result, mimetype='text/plain')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
