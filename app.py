@@ -541,5 +541,8 @@ def redirect_short(code):
     return Response(b64_result, mimetype='text/plain')
 
 if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.INFO)
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    print(f"Starting sub-aggregator on 0.0.0.0:{port}", flush=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
