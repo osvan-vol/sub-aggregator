@@ -6,8 +6,8 @@ runtime:
 commands:
   package: ""
   build:
-    - "pip install --no-cache-dir -r requirements.txt"
-  start: "python app.py"
+    - "pip install --no-cache-dir --user -r requirements.txt"
+  start: "python -u app.py"
 
 port: 5000
 
